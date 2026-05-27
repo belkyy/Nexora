@@ -11,7 +11,6 @@ export default function EventCard() {
             </p>
 
             <div className="flex flex-col gap-2">
-
                 <button className="bg-green-600 hover:bg-green-500 transition rounded-lg p-2">
                     Invest 150B$
                 </button>
