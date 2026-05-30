@@ -1,16 +1,26 @@
-# React + Vite
+# 🎮 Nexora - Gerçek Zamanlı Oyun Platformu
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Nexora, kullanıcıların arkadaşlarıyla anlık olarak oyun oynayabileceği, Socket.io tabanlı, gerçek zamanlı ve etkileşimli bir oyun platformudur.
 
-Currently, two official plugins are available:
+## 🚀 Canlı Demo
+Oyunu hemen denemek için: [https://nexora-rosy.vercel.app/](https://nexora-rosy.vercel.app/)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## ✨ Özellikler
+- **Gerçek Zamanlı Bağlantı:** Socket.io sayesinde bekleme süresi olmadan anlık veri alışverişi.
+- **Dinamik Lobi Sistemi:** Kullanıcı dostu arayüz ile kolayca oda oluşturma veya odaya katılma.
+- **Modern Tasarım:** Şık, karanlık tema ve akıcı animasyonlar.
+- **Performans:** Hızlı tepki süresi sunan optimize edilmiş yapı.
 
-## React Compiler
+## 🛠️ Kullanılan Teknolojiler
+- **Frontend:** React.js, Vite, Tailwind CSS
+- **Backend:** Node.js, Express, Socket.io
+- **Deployment:** Vercel (Frontend), Render (Backend)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 📂 Kurulum ve Çalıştırma
 
-## Expanding the ESLint configuration
+Projenin yerel bilgisayarınızda çalışması için şu adımları izleyin:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+1. **Repoyu Klonlayın:**
+   ```bash
+   git clone [https://github.com/belkyy/Nexora.git](https://github.com/belkyy/Nexora.git)
+   cd Nexora
