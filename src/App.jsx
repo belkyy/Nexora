@@ -5,6 +5,16 @@ import Home from './components/Home';
 import GameBoard from './components/GameBoard';
 
 function App() {
+  const isMaintenanceMode = true; // Sadece burayı 'true' yapıp push'la
+
+  if (isMaintenanceMode) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f172a', color: 'white' }}>
+        <h1>🛠️ Nexora Bakımda!</h1>
+      </div>
+    );
+  }
+  
   const { gameState, setGameState } = useGameStore();
 
   useEffect(() => {
