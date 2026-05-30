@@ -8,11 +8,9 @@ function App() {
   const { gameState, setGameState } = useGameStore();
 
   useEffect(() => {
-    // Tüm oyun güncellemelerini dinliyoruz
     socket.on('gameCreated', (game) => setGameState(game));
     socket.on('updateGame', (game) => setGameState(game));
     socket.on('error', (msg) => alert(msg));
-
     return () => {
       socket.off('gameCreated');
       socket.off('updateGame');
@@ -20,14 +18,9 @@ function App() {
     };
   }, [setGameState]);
 
-  // EĞER Oyun oynanıyorsa VEYA bittiyse oyun tahtasını göster
   if (gameState && (gameState.status === 'playing' || gameState.status === 'finished')) {
     return <GameBoard />;
   }
-
-  // EĞER Oyun yoksa (giriş ekranı) VEYA bekleme modundaysa (lobi) Home'u göster
-  // Çünkü yeni animasyonlu giriş ve lobi tasarımımızın ikisi de Home.jsx'in içinde!
   return <Home />;
 }
-
 export default App;

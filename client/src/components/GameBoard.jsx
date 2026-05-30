@@ -36,7 +36,7 @@ export default function GameBoard() {
     }
 
     try {
-      const res = await fetch('http://localhost:3001/update-profile', {
+      const res = await fetch('https://nexora-ihpy.onrender.com/update-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentUsername: playerName, currentPassword, newUsername, newPassword })
