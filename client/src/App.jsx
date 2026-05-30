@@ -8,7 +8,7 @@ function App() {
   const { gameState, setGameState } = useGameStore();
 
   useEffect(() => {
-    // Tüm oyun güncellemelerini artık tek bir event üzerinden dinliyoruz
+    // Tüm oyun güncellemelerini dinliyoruz
     socket.on('gameCreated', (game) => setGameState(game));
     socket.on('updateGame', (game) => setGameState(game));
     socket.on('error', (msg) => alert(msg));
@@ -20,35 +20,14 @@ function App() {
     };
   }, [setGameState]);
 
-  const handleStartGame = () => {
-    socket.emit('startGame', gameState.id);
-  };
+  // EĞER Oyun oynanıyorsa VEYA bittiyse oyun tahtasını göster
+  if (gameState && (gameState.status === 'playing' || gameState.status === 'finished')) {
+    return <GameBoard />;
+  }
 
-  if (!gameState) return <Home />;
-
-  if (gameState.status === 'playing' || gameState.status === 'finished') return <GameBoard />;
-
-  return (
-    <div style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
-      <h2>Oda Kodu: <span style={{ color: 'red' }}>{gameState.id}</span></h2>
-      <p>Bu kodu arkadaşlarınla paylaş!</p>
-      
-      <h3>Bekleme Odası ({gameState.players.length}/4)</h3>
-      <ul>
-        {gameState.players.map((p) => (
-          <li key={p.id} style={{ fontSize: '1.2rem', margin: '0.5rem 0' }}>
-            {p.name} {p.id === gameState.host && "(Kurucu)"}
-          </li>
-        ))}
-      </ul>
-
-      {socket.id === gameState.host && (
-        <button onClick={handleStartGame} style={{ padding: '1rem 2rem', marginTop: '1rem', cursor: 'pointer' }}>
-          Oyunu Başlat
-        </button>
-      )}
-    </div>
-  );
+  // EĞER Oyun yoksa (giriş ekranı) VEYA bekleme modundaysa (lobi) Home'u göster
+  // Çünkü yeni animasyonlu giriş ve lobi tasarımımızın ikisi de Home.jsx'in içinde!
+  return <Home />;
 }
 
 export default App;

@@ -3,12 +3,19 @@ import { useGameStore } from '../store/useGameStore';
 import { socket } from '../socket';
 
 export default function GameBoard() {
-  const { gameState } = useGameStore();
+  const { gameState, playerName, setPlayerName } = useGameStore(); // setPlayerName eklendi
   const [timeLeft, setTimeLeft] = useState(30);
   const [showLoanModal, setShowLoanModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [notification, setNotification] = useState('');
   
-  const myPlayer = gameState.players.find(p => p.id === socket.id);
+  // Ayarlar Modalı için State'ler
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newUsername, setNewUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [settingsMsg, setSettingsMsg] = useState('');
+  
+  const myPlayer = gameState?.players?.find(p => p.id === socket.id);
 
   useEffect(() => {
     socket.on('timerUpdate', (time) => setTimeLeft(time));
@@ -19,7 +26,44 @@ export default function GameBoard() {
   const handleTakeLoan = (type) => { socket.emit('takeLoan', { roomId: gameState.id, type }); setShowLoanModal(false); };
   const handleUsePower = (powerId, index) => { if(!myPlayer.isBankrupt) socket.emit('useSpecialPower', { roomId: gameState.id, powerId, index }); };
 
-  if (!myPlayer) return <p>Yükleniyor...</p>;
+  // Profil Güncelleme Fonksiyonu
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
+    setSettingsMsg('İşlem yapılıyor...');
+    
+    if (!currentPassword) {
+      return setSettingsMsg('❌ Güvenlik için mevcut şifrenizi girmelisiniz!');
+    }
+
+    try {
+      const res = await fetch('http://localhost:3001/update-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentUsername: playerName, currentPassword, newUsername, newPassword })
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        setSettingsMsg('✅ Başarıyla güncellendi!');
+        if (newUsername && newUsername !== playerName) {
+          setPlayerName(data.newUsername);
+          // Oyundaki adımızı anında değiştirmek için sunucuya haber ver
+          socket.emit('updatePlayerName', { roomId: gameState.id, newName: data.newUsername });
+        }
+        // Kutuları temizle
+        setCurrentPassword(''); setNewUsername(''); setNewPassword('');
+      } else {
+        setSettingsMsg(`❌ ${data.message}`);
+      }
+    } catch (err) {
+      setSettingsMsg('❌ Sunucuya ulaşılamadı.');
+    }
+  };
+
+  if (!gameState || !gameState.players) {
+    return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1a1a2e', color: 'white' }}><h1>Veriler yükleniyor...</h1></div>;
+  }
+  if (!myPlayer) return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1a1a2e', color: 'white' }}><p>Kullanıcı bulunamadı, bekleniyor...</p></div>;
 
   const assetLabels = {
     dolar: { icon: '💵', name: 'Dolar', color: '#86efac' },
@@ -65,6 +109,13 @@ export default function GameBoard() {
             );
           })}
         </div>
+        
+        <button 
+          onClick={() => window.location.reload()}
+          style={{ marginTop: '3rem', padding: '1rem 2rem', backgroundColor: '#fbbf24', color: '#1e293b', border: 'none', borderRadius: '8px', fontSize: '1.2rem', fontWeight: 'bold', cursor: 'pointer' }}
+        >
+          🏠 Ana Sayfaya Dön
+        </button>
       </div>
     );
   }
@@ -85,6 +136,12 @@ export default function GameBoard() {
       <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#450a0a', color: 'white', flexDirection: 'column' }}>
         <h1 style={{ fontSize: '4rem', color: '#f87171' }}>İFLAS ETTİNİZ!</h1>
         <p style={{ fontSize: '1.2rem', color: '#fca5a5', marginTop: '1rem' }}>Rakiplerinin de batmasını bekleyebilirsin...</p>
+        <button 
+          onClick={() => { if(window.confirm("Oyundan ayrılmak istiyor musunuz?")) window.location.reload(); }}
+          style={{ marginTop: '2rem', padding: '0.8rem 1.5rem', backgroundColor: 'transparent', color: '#f87171', border: '2px solid #f87171', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+        >
+          Çıkış Yap
+        </button>
       </div>
     );
   }
@@ -93,7 +150,7 @@ export default function GameBoard() {
     <div style={{ height: '100vh', width: '100vw', display: 'flex', backgroundColor: '#1a1a2e', color: 'white', fontFamily: 'sans-serif', overflow: 'hidden' }}>
       <style>{`::-webkit-scrollbar { display: none; }`}</style>
 
-      {/* 1. SÜTUN: SOL MENÜ */}
+      {/* SOL MENÜ */}
       <div style={{ width: '270px', backgroundColor: '#16213e', borderRight: '2px solid #0f3460', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
         <div style={{ padding: '0.8rem', borderBottom: '2px solid #0f3460', textAlign: 'center', position: 'sticky', top: 0, backgroundColor: '#16213e', zIndex: 10 }}>
           <h2 style={{ margin: 0, color: '#facc15', fontSize: '1.1rem' }}>PİYASA EKRANI</h2>
@@ -116,10 +173,13 @@ export default function GameBoard() {
         </div>
       </div>
 
-      {/* 2. SÜTUN: ANA EKRAN */}
+      {/* ANA EKRAN */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
-        {notification && <div style={{ position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)', backgroundColor: '#10b981', color: 'white', padding: '0.8rem 1.5rem', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.3)', zIndex: 100, fontWeight: 'bold', animation: 'fadeIn 0.5s' }}>🔔 {notification}</div>}
         
+        {/* BİLDİRİMLER */}
+        {notification && <div style={{ position: 'absolute', top: '70px', left: '50%', transform: 'translateX(-50%)', backgroundColor: '#10b981', color: 'white', padding: '0.8rem 1.5rem', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.3)', zIndex: 100, fontWeight: 'bold', animation: 'fadeIn 0.5s' }}>🔔 {notification}</div>}
+        
+        {/* KREDİ MODALI */}
         {showLoanModal && (
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
             <div style={{ backgroundColor: '#1f2937', padding: '2rem', borderRadius: '16px', width: '450px', textAlign: 'center', border: '2px solid #fbbf24' }}>
@@ -133,6 +193,61 @@ export default function GameBoard() {
           </div>
         )}
 
+        {/* AYARLAR MODALI (GÜNCELLENDİ) */}
+        {showSettingsModal && (
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60 }}>
+            <div style={{ backgroundColor: '#1f2937', padding: '2.5rem', borderRadius: '16px', width: '380px', border: '2px solid #60a5fa', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}>
+              <h2 style={{ color: '#60a5fa', marginBottom: '1.5rem', textAlign: 'center' }}>⚙️ Profil Ayarları</h2>
+              
+              <form onSubmit={handleUpdateProfile} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.8rem', color: '#9ca3af' }}>Yeni Kullanıcı Adı (İsteğe bağlı)</label>
+                  <input type="text" placeholder="Yeni Kullanıcı Adı" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} style={{ width: '100%', padding: '0.8rem', marginTop: '0.3rem', borderRadius: '6px', border: '1px solid #374151', background: '#111827', color: 'white', boxSizing: 'border-box' }} />
+                </div>
+                
+                <div>
+                  <label style={{ fontSize: '0.8rem', color: '#9ca3af' }}>Yeni Şifre (İsteğe bağlı)</label>
+                  <input type="password" placeholder="Yeni Şifre" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} style={{ width: '100%', padding: '0.8rem', marginTop: '0.3rem', borderRadius: '6px', border: '1px solid #374151', background: '#111827', color: 'white', boxSizing: 'border-box' }} />
+                </div>
+
+                <div style={{ marginTop: '0.5rem', paddingTop: '1rem', borderTop: '1px solid #374151' }}>
+                  <label style={{ fontSize: '0.8rem', color: '#fbbf24', fontWeight: 'bold' }}>Mevcut Şifre (Değişiklik için ZORUNLU)</label>
+                  <input type="password" placeholder="Mevcut Şifreniz" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required style={{ width: '100%', padding: '0.8rem', marginTop: '0.3rem', borderRadius: '6px', border: '1px solid #b45309', background: '#111827', color: 'white', boxSizing: 'border-box' }} />
+                </div>
+
+                {settingsMsg && <div style={{ textAlign: 'center', fontSize: '0.9rem', color: settingsMsg.includes('❌') ? '#ef4444' : '#10b981', margin: '0.5rem 0' }}>{settingsMsg}</div>}
+
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                  <button type="button" onClick={() => { setShowSettingsModal(false); setSettingsMsg(''); setCurrentPassword(''); }} style={{ flex: 1, padding: '0.8rem', backgroundColor: 'transparent', color: '#9ca3af', border: '1px solid #9ca3af', borderRadius: '8px', cursor: 'pointer' }}>İptal</button>
+                  <button type="submit" style={{ flex: 1, padding: '0.8rem', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Kaydet</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ÜST BAR: PROFİL VE ÇIKIŞ */}
+        <div style={{ padding: '0.6rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(15, 23, 42, 0.6)', borderBottom: '1px solid #374151' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <span style={{ fontSize: '1.1rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              👤 <span style={{ color: '#60a5fa' }}>{myPlayer.name}</span>
+            </span>
+            <button onClick={() => setShowSettingsModal(true)} style={{ padding: '0.3rem 0.8rem', backgroundColor: '#374151', color: '#e5e7eb', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', transition: 'background 0.2s' }}>
+              ⚙️ Ayarlar
+            </button>
+          </div>
+          <button 
+            onClick={() => { 
+              if(window.confirm("Oyundan ayrılıp ana sayfaya dönmek istediğinize emin misiniz? Oyun bağlantınız kesilecektir.")) {
+                window.location.reload(); 
+              }
+            }} 
+            style={{ padding: '0.4rem 1rem', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', transition: 'background 0.2s' }}>
+            🏠 Ana Sayfaya Dön
+          </button>
+        </div>
+
+        {/* MEVCUT ÜST BAR: SÜRE VE BİLGİ */}
         <div style={{ padding: '0.8rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #374151' }}>
           <div>
             {gameState.isChaos && <div style={{ backgroundColor: '#7c3aed', color: 'white', padding: '0.3rem 0.8rem', borderRadius: '4px', fontWeight: 'bold', animation: 'pulse 1s infinite', fontSize: '0.9rem' }}>⚡ KAOS MODU! (Kalan: {gameState.chaosDaysLeft} Gün)</div>}
@@ -144,6 +259,7 @@ export default function GameBoard() {
           </div>
         </div>
 
+        {/* OYUN ALANI (KARTLAR) */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '2rem' }}>
           <h2 style={{ marginBottom: '1rem', fontSize: '1.5rem', color: myPlayer.selectedCard ? '#9ca3af' : 'white' }}>
             {myPlayer.selectedCard ? "Diğer oyuncular bekleniyor..." : "Hamleni Seç veya Pas Geç"}
@@ -235,7 +351,7 @@ export default function GameBoard() {
         </div>
       </div>
 
-      {/* 3. SÜTUN: SAĞ MENÜ (LİDERLİK TABLOSU) */}
+      {/* SAĞ MENÜ (LİDERLİK TABLOSU) */}
       <div style={{ width: '250px', backgroundColor: '#16213e', borderLeft: '2px solid #0f3460', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
         <div style={{ padding: '0.8rem', borderBottom: '2px solid #0f3460', textAlign: 'center', position: 'sticky', top: 0, backgroundColor: '#16213e', zIndex: 10 }}><h2 style={{ margin: 0, color: '#facc15', fontSize: '1.1rem' }}>RAKİPLER</h2></div>
         <div style={{ padding: '0.6rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>

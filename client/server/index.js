@@ -2,9 +2,11 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const bcrypt = require('bcryptjs');
 
 const app = express();
 app.use(cors());
+app.use(express.json());
 
 const server = http.createServer(app);
 
@@ -12,13 +14,67 @@ const io = new Server(server, {
   cors: { origin: "http://localhost:5173", methods: ["GET", "POST"] }
 });
 
-const ASSET_KEYS = ['dolar', 'euro', 'altin', 'gumus', 'bitcoin', 'eth', 'nvidia', 'apple'];
+// --- AUTH SİSTEMİ ---
+const fs = require('fs');
+const path = require('path');
 
-const volatility = { 
-  dolar: 0.005, euro: 0.005, altin: 0.05, gumus: 0.05, 
-  bitcoin: 0.10, eth: 0.10, 
-  nvidia: 0.07, apple: 0.05 
+// --- KALICI VERİTABANI (JSON SİSTEMİ) ---
+const dbPath = path.join(__dirname, 'users.json');
+
+// Eğer users.json yoksa oluştur, varsa içindeki verileri oku
+let users = [];
+if (fs.existsSync(dbPath)) {
+    users = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+} else {
+    fs.writeFileSync(dbPath, JSON.stringify([]));
+}
+
+// Veritabanını (Dosyayı) Güncelleme Fonksiyonu
+const saveDatabase = () => {
+    fs.writeFileSync(dbPath, JSON.stringify(users, null, 2));
 };
+
+app.post('/register', async (req, res) => {
+    const { username, password } = req.body;
+    if (users.find(u => u.username === username)) return res.status(400).json({ message: "Kullanıcı mevcut" });
+    const hashedPassword = await bcrypt.hash(password, 10);
+    users.push({ username, password: hashedPassword });
+    saveDatabase(); // Yeni kullanıcıyı dosyaya kaydet
+    res.json({ success: true });
+});
+
+app.post('/login', async (req, res) => {
+    const { username, password } = req.body;
+    const user = users.find(u => u.username === username);
+    if (user && await bcrypt.compare(password, user.password)) {
+        res.json({ success: true, username });
+    } else {
+        res.status(401).json({ message: "Hatalı giriş" });
+    }
+});
+
+app.post('/update-profile', async (req, res) => {
+    const { currentUsername, currentPassword, newUsername, newPassword } = req.body;
+    const user = users.find(u => u.username === currentUsername);
+    
+    if (!user || !(await bcrypt.compare(currentPassword, user.password))) {
+        return res.status(401).json({ success: false, message: "Mevcut şifreniz hatalı!" });
+    }
+
+    if (newUsername && newUsername !== currentUsername) {
+        if (users.find(u => u.username === newUsername)) return res.status(400).json({ success: false, message: "Bu kullanıcı adı zaten alınmış!" });
+        user.username = newUsername;
+    }
+
+    if (newPassword) user.password = await bcrypt.hash(newPassword, 10);
+    
+    saveDatabase(); // Değişiklikleri dosyaya kaydet
+    res.json({ success: true, newUsername: user.username });
+});
+
+// --- OYUN MANTIĞI ---
+const ASSET_KEYS = ['dolar', 'euro', 'altin', 'gumus', 'bitcoin', 'eth', 'nvidia', 'apple'];
+const volatility = { dolar: 0.005, euro: 0.005, altin: 0.05, gumus: 0.05, bitcoin: 0.10, eth: 0.10, nvidia: 0.07, apple: 0.05 };
 
 const getDynamicCards = () => {
   const strategyCards = [
@@ -205,7 +261,6 @@ const executeTurn = (roomId) => {
 
   game.currentEvent += 1; 
 
-  // YENİ: OYUN BİTİŞ KONTROLÜ (150 Tur VEYA Sadece 1 kişi kalması)
   const activeCount = game.players.filter(p => !p.isBankrupt).length;
   const isLastManStanding = game.players.length > 1 && activeCount <= 1;
   const isEveryoneDead = activeCount === 0;
@@ -213,7 +268,7 @@ const executeTurn = (roomId) => {
   if (game.currentEvent > 150 || isLastManStanding || isEveryoneDead) {
     game.status = 'finished';
     io.to(roomId).emit('updateGame', game);
-    return; // Oyunu bitir, timer'ı baştan başlatma
+    return;
   }
 
   game.currentCards = getDynamicCards(); 
@@ -245,11 +300,48 @@ io.on('connection', (socket) => {
   });
 
   socket.on('joinGame', (data) => {
-    const { roomId, playerName } = data; const game = games[roomId];
-    if (game && game.status === 'waiting' && game.players.length < 4) {
-      game.players.push({ id: socket.id, name: playerName, balance: 10000, portfolio: { dolar: 0, euro: 0, altin: 0, gumus: 0, bitcoin: 0, eth: 0, nvidia: 0, apple: 0 }, selectedCard: null, loan: { active: false, remaining: 0, installment: 0 }, hasUsedLoan: false, bankruptcyCountdown: 5, isBankrupt: false, passCount: 0, specialPowers: [], passiveIncomes: [] });
-      socket.join(roomId); io.to(roomId).emit('updateGame', game);
+    const { roomId, playerName } = data; 
+    const game = games[roomId];
+    
+    // 1. Oyun yoksa hata ver
+    if (!game) {
+      return socket.emit('error', '❌ Hata: Böyle bir oda bulunamadı! Kodu kontrol edin.');
     }
+    // 2. Oyun bekleme modunda değilse (çoktan başladıysa)
+    if (game.status !== 'waiting') {
+      return socket.emit('error', '❌ Hata: Bu oyun zaten başlamış veya bitmiş!');
+    }
+    // 3. Oda kontenjanı doluysa
+    if (game.players.length >= 4) {
+      return socket.emit('error', '❌ Hata: Bu oda tamamen dolu (4/4)!');
+    }
+
+    // 4. (YENİ) Eğer oyuncu bağlantısı kopup aynı isimle tekrar girmeye çalışıyorsa
+    const existingPlayer = game.players.find(p => p.name === playerName);
+    if (existingPlayer) {
+      existingPlayer.id = socket.id; // Eski hesabın socket ID'sini yenisiyle güncelle
+      socket.join(roomId);
+      return io.to(roomId).emit('updateGame', game);
+    }
+
+    // 5. Her şey sorunsuzsa yeni oyuncuyu odaya ekle
+    game.players.push({ 
+      id: socket.id, 
+      name: playerName, 
+      balance: 10000, 
+      portfolio: { dolar: 0, euro: 0, altin: 0, gumus: 0, bitcoin: 0, eth: 0, nvidia: 0, apple: 0 }, 
+      selectedCard: null, 
+      loan: { active: false, remaining: 0, installment: 0 }, 
+      hasUsedLoan: false, 
+      bankruptcyCountdown: 5, 
+      isBankrupt: false, 
+      passCount: 0, 
+      specialPowers: [], 
+      passiveIncomes: [] 
+    });
+    
+    socket.join(roomId); 
+    io.to(roomId).emit('updateGame', game);
   });
 
   socket.on('startGame', (roomId) => { const game = games[roomId]; if (game && game.host === socket.id) { game.status = 'playing'; game.currentCards = getDynamicCards(); io.to(roomId).emit('updateGame', game); startTimer(roomId); } });
@@ -296,7 +388,52 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('disconnect', () => {});
+  // YENİ: OYUN İÇİNDE İSİM GÜNCELLEMESİNİ YAKALAMA
+  socket.on('updatePlayerName', ({ roomId, newName }) => {
+    const game = games[roomId];
+    if (game) {
+      const player = game.players.find(p => p.id === socket.id);
+      if (player) {
+        player.name = newName;
+        io.to(roomId).emit('updateGame', game); // Herkese yeni ismi gönder
+      }
+    }
+  });
+
+  // YENİ: OYUNDAN ÇIKANLARI LİSTEDEN SİLME VE LOBİ GÜNCELLEMESİ
+  socket.on('disconnect', () => {
+    for (const roomId in games) {
+      const game = games[roomId];
+      const playerIndex = game.players.findIndex(p => p.id === socket.id);
+      
+      if (playerIndex !== -1) {
+        // 1. Oyuncuyu listeden çıkar
+        game.players.splice(playerIndex, 1);
+        
+        // 2. Eğer odada kimse kalmadıysa odayı komple sil (Sunucu belleği şişmesin)
+        if (game.players.length === 0) {
+          clearInterval(intervals[roomId]);
+          delete games[roomId];
+        } else {
+          // 3. Çıkan kişi odanın "Kurucusu" ise, sıradaki ilk kişiyi yeni kurucu yap
+          if (game.host === socket.id) {
+            game.host = game.players[0].id;
+          }
+
+          // 4. Eğer oyun oynanıyorsa ve çıkan kişi yüzünden 1 kişi kaldıysa oyunu bitir
+          const activeCount = game.players.filter(p => !p.isBankrupt).length;
+          if (game.status === 'playing' && activeCount <= 1) {
+            game.status = 'finished';
+          }
+          
+          // 5. Kalan oyunculara odanın güncel (eksilmiş) halini gönder
+          io.to(roomId).emit('updateGame', game);
+          io.to(roomId).emit('notify', "⚠️ Bir oyuncu bağlantıyı kesti ve ayrıldı.");
+        }
+        break; // Oyuncuyu bulduğumuz için döngüden çık
+      }
+    }
+  });
 });
 
 const PORT = 3001; server.listen(PORT, () => { console.log(`Sunucu ${PORT} portunda çalışıyor...`); });
