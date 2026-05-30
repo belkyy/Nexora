@@ -97,7 +97,7 @@ export default function Home() {
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
     setAuthMessage('İşlem yapılıyor...');
-    const url = isLoginMode ? 'http://localhost:3001/login' : 'http://localhost:3001/register';
+    const url = isLoginMode ? 'https://nexora-ihpy.onrender.com/login' : 'https://nexora-ihpy.onrender.com/register';
     
     try {
       const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
